@@ -71,7 +71,8 @@ uint32_t pwm = 0;
 
 bool sentido_horario = false;
 bool sentido_antihorario = false;
-bool tx_ready = true;
+bool parada = true;
+bool teste_motor = false;
 
 uint8_t rx_uart;
 char rx_buffer[RX_BUFFER_SIZE];
@@ -380,8 +381,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : btn_sentido_horario_Pin btn_sentido_antihorario_Pin */
-  GPIO_InitStruct.Pin = btn_sentido_horario_Pin|btn_sentido_antihorario_Pin;
+  /*Configure GPIO pins : btn_sentido_horario_Pin btn_sentido_antihorario_Pin btn_parada_Pin btn_rotina_teste_Pin */
+  GPIO_InitStruct.Pin = btn_sentido_horario_Pin|btn_sentido_antihorario_Pin|btn_parada_Pin|btn_rotina_teste_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -403,6 +404,12 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
@@ -417,6 +424,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	static uint32_t tempo_anterior = 0;
 	static uint32_t tempo_anterior_horario = 0;
 	static uint32_t tempo_anterior_antihorario = 0;
+	static uint32_t tempo_anterior_parada = 0;
+	static uint32_t tempo_anterior_teste = 0;
+
 	switch(GPIO_Pin) {
 	case encoder_button_Pin:
 		if((tempo_atual - tempo_anterior) > 50) {
@@ -426,18 +436,38 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 		break;
 	case btn_sentido_horario_Pin:
 		if((tempo_atual - tempo_anterior_horario) > 50) {
+			parada = false;
 			sentido_antihorario = false;
+			teste_motor = false;
 			sentido_horario = true;
 			tempo_anterior_horario = tempo_atual;
 		}
 		break;
 	case btn_sentido_antihorario_Pin:
 		if((tempo_atual - tempo_anterior_antihorario) > 50) {
+			parada = false;
 			sentido_horario = false;
+			teste_motor = false;
 			sentido_antihorario = true;
 			tempo_anterior_antihorario = tempo_atual;
 		}
 		break;
+	case btn_parada_Pin:
+		if((tempo_atual - tempo_anterior_parada) > 50) {
+			sentido_horario = false;
+			sentido_antihorario = false;
+			teste_motor = false;
+			parada = true;
+			tempo_anterior_parada = tempo_atual;
+		}
+	case btn_rotina_teste_Pin:
+		if((tempo_atual - tempo_anterior_teste) > 50) {
+			sentido_horario = false;
+			sentido_antihorario = false;
+			parada = false;
+			teste_motor = true;
+			tempo_anterior_teste = tempo_atual;
+		}
 	default:
 		break;
 	}
