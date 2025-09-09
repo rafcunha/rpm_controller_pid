@@ -34,34 +34,34 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := motor_controller_pid_rpm
+BUILD_ARTIFACT_NAME := rpm_controller_pid
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-motor_controller_pid_rpm.elf \
+rpm_controller_pid.elf \
 
 MAP_FILES += \
-motor_controller_pid_rpm.map \
+rpm_controller_pid.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-motor_controller_pid_rpm.list \
+rpm_controller_pid.list \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: motor_controller_pid_rpm.elf secondary-outputs
+main-build: rpm_controller_pid.elf secondary-outputs
 
 # Tool invocations
-motor_controller_pid_rpm.elf motor_controller_pid_rpm.map: $(OBJS) $(USER_OBJS) /home/cunha/STM32CubeIDE/workspace_1.19.0/motor_controller_pid_rpm/STM32F446RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "motor_controller_pid_rpm.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/cunha/STM32CubeIDE/workspace_1.19.0/motor_controller_pid_rpm/STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="motor_controller_pid_rpm.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+rpm_controller_pid.elf rpm_controller_pid.map: $(OBJS) $(USER_OBJS) /home/cunha/code/STM/rpm_controller_pid/STM32F446RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "rpm_controller_pid.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/cunha/code/STM/rpm_controller_pid/STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="rpm_controller_pid.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -70,14 +70,14 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-motor_controller_pid_rpm.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "motor_controller_pid_rpm.list"
+rpm_controller_pid.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "rpm_controller_pid.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) default.size.stdout motor_controller_pid_rpm.elf motor_controller_pid_rpm.list motor_controller_pid_rpm.map
+	-$(RM) default.size.stdout rpm_controller_pid.elf rpm_controller_pid.list rpm_controller_pid.map
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)

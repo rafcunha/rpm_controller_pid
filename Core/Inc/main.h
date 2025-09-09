@@ -63,12 +63,6 @@ void Error_Handler(void);
 #define B1_Pin GPIO_PIN_13
 #define B1_GPIO_Port GPIOC
 #define B1_EXTI_IRQn EXTI15_10_IRQn
-#define btn_sentido_horario_Pin GPIO_PIN_0
-#define btn_sentido_horario_GPIO_Port GPIOC
-#define btn_sentido_horario_EXTI_IRQn EXTI0_IRQn
-#define btn_sentido_antihorario_Pin GPIO_PIN_1
-#define btn_sentido_antihorario_GPIO_Port GPIOC
-#define btn_sentido_antihorario_EXTI_IRQn EXTI1_IRQn
 #define encoder_button_Pin GPIO_PIN_2
 #define encoder_button_GPIO_Port GPIOC
 #define encoder_button_EXTI_IRQn EXTI2_IRQn

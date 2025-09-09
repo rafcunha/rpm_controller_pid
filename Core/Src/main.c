@@ -18,7 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
+//#include "pid.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdlib.h>
@@ -35,6 +35,8 @@
 /* USER CODE BEGIN PD */
 #define RX_BUFFER_SIZE 100
 #define TX_BUFFER_SIZE 100
+#define TIMCLOCK 84000000
+#define PRESCALER 840
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,6 +46,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
@@ -58,27 +61,59 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim);
+void Encoder_CheckChange(TIM_HandleTypeDef *htim);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint32_t encoder_position = 0;
-uint32_t rpm = 0;
-uint32_t rpm_select = 0;
-uint32_t pwm = 0;
+//PID_TypeDef RPM_PID;
 
-bool sentido_horario = false;
-bool sentido_antihorario = false;
+uint32_t encoder_position = 0;
+uint32_t rpm_selection = 1;
+double rpm_select = 0;
+double pwm = 0;
+uint32_t counter = 0;
+uint32_t last_count = 0;
+uint32_t count = 0;
+uint32_t velocity[3] = {250, 305, 1000};
+
 bool parada = true;
 bool teste_motor = false;
+
+bool is_captured = false;
+uint32_t IC_Val1 = 0;
+uint32_t IC_Val2 = 0;
+uint32_t difference = 0;
+float ref_clock = 0;
+double frequencia = 0;
+double rpm_real = 0;
 
 uint8_t rx_uart;
 char rx_buffer[RX_BUFFER_SIZE];
 uint8_t rx_index = 0;
 
 char tx_buffer[TX_BUFFER_SIZE];
+
+float uk, uk_1=0, ek_1=0, ek_2=0, ek=0;
+float Kp=1, Ki=0, Kd=0;
+float umax=8000;/*Constant*/
+float umin=0; /*Constant*/
+float T=0.02;
+float PID_control (float setpoint, float measure)
+{
+	ek_2=ek_1;
+	ek_1=ek;
+	ek=setpoint-measure;
+	uk_1=uk;
+	uk=uk_1+Kp*(ek-ek_1) +Ki*(T/2)*(ek+ek_1)+ (Kd/T)*(ek-2*ek_1+ek_2);
+	if (uk>umax) uk=umax;
+	if (uk<umin) uk=umin;
+	return (uk);
+}
 
 /* USER CODE END 0 */
 
@@ -96,7 +131,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+
+HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -114,30 +150,52 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM4_Init();
   MX_TIM1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
+  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
   HAL_UART_Receive_IT(&huart2, &rx_uart, 1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+
+  //PID(&RPM_PID, &rpm_real, &pwm, &rpm_select, 500, 0, 0, _PID_P_ON_E, _PID_CD_DIRECT);
+
+  //PID_SetMode(&RPM_PID, _PID_MODE_AUTOMATIC);
+  //PID_SetSampleTime(&RPM_PID, 500);
+  //PID_SetOutputLimits(&RPM_PID, 0, 1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	 //305 - medio, 1000 - maximo, 250 - minimo
 	 encoder_position = __HAL_TIM_GET_COUNTER(&htim4);
-	 rpm = encoder_position/2;
-	 pwm = (rpm_select*100)/11500;
-
-	 if(sentido_horario) {
-	 	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm);
-	 	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0);
-	 } else if(sentido_antihorario) {
-	 	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, pwm);
-	 	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-
+	 rpm_real = frequencia*60;
+	 Encoder_CheckChange(&htim4);
+	 if(rpm_selection > 3){
+		 rpm_selection = 3;
+	 } else if(rpm_selection < 1){
+		 rpm_selection = 1;
 	 }
+	 //pwm = (uint32_t)(rpm_select * 1000)/7400;
 
+	 //PID_Compute(&RPM_PID);
+	 if(parada) {
+		 __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
+	 } else if(teste_motor){
+		 __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 250);
+		 HAL_Delay(5000);
+		 __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 305);
+		 HAL_Delay(5000);
+		 __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 1000);
+		 HAL_Delay(5000);
+		 teste_motor = false;
+		 parada = true;
+	 }else{
+		 //__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, velocity[rpm_selection - 1]);
+		 __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm);
+	 }
+	 //PID_Compute(&RPM_PID);
 
     /* USER CODE END WHILE */
 
@@ -216,7 +274,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 84-1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 100-1;
+  htim1.Init.Period = 1000-1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -250,10 +308,6 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
   sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
   sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
@@ -269,6 +323,64 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 840 - 1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_IC_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -381,8 +493,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : btn_sentido_horario_Pin btn_sentido_antihorario_Pin btn_parada_Pin btn_rotina_teste_Pin */
-  GPIO_InitStruct.Pin = btn_sentido_horario_Pin|btn_sentido_antihorario_Pin|btn_parada_Pin|btn_rotina_teste_Pin;
+  /*Configure GPIO pins : btn_parada_Pin btn_rotina_teste_Pin */
+  GPIO_InitStruct.Pin = btn_parada_Pin|btn_rotina_teste_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -395,12 +507,6 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
-
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
@@ -422,52 +528,31 @@ static void MX_GPIO_Init(void)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	uint32_t tempo_atual = HAL_GetTick();
 	static uint32_t tempo_anterior = 0;
-	static uint32_t tempo_anterior_horario = 0;
-	static uint32_t tempo_anterior_antihorario = 0;
 	static uint32_t tempo_anterior_parada = 0;
 	static uint32_t tempo_anterior_teste = 0;
 
 	switch(GPIO_Pin) {
 	case encoder_button_Pin:
 		if((tempo_atual - tempo_anterior) > 50) {
-			rpm_select = rpm;
+			parada = false;
+			teste_motor = false;
 			tempo_anterior = tempo_atual;
-		}
-		break;
-	case btn_sentido_horario_Pin:
-		if((tempo_atual - tempo_anterior_horario) > 50) {
-			parada = false;
-			sentido_antihorario = false;
-			teste_motor = false;
-			sentido_horario = true;
-			tempo_anterior_horario = tempo_atual;
-		}
-		break;
-	case btn_sentido_antihorario_Pin:
-		if((tempo_atual - tempo_anterior_antihorario) > 50) {
-			parada = false;
-			sentido_horario = false;
-			teste_motor = false;
-			sentido_antihorario = true;
-			tempo_anterior_antihorario = tempo_atual;
 		}
 		break;
 	case btn_parada_Pin:
 		if((tempo_atual - tempo_anterior_parada) > 50) {
-			sentido_horario = false;
-			sentido_antihorario = false;
 			teste_motor = false;
 			parada = true;
 			tempo_anterior_parada = tempo_atual;
 		}
+		break;
 	case btn_rotina_teste_Pin:
 		if((tempo_atual - tempo_anterior_teste) > 50) {
-			sentido_horario = false;
-			sentido_antihorario = false;
 			parada = false;
 			teste_motor = true;
 			tempo_anterior_teste = tempo_atual;
 		}
+		break;
 	default:
 		break;
 	}
@@ -483,10 +568,46 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		snprintf(tx_buffer, TX_BUFFER_SIZE, "RPM selecionado = %lu\r\n", rpm_select);
 		HAL_UART_Transmit(&huart2, tx_buffer, sizeof(tx_buffer), 100);
 		rx_index = 0;
+		pwm = PID_control (rpm_select, rpm_real);
+		parada = false;
+		teste_motor = false;
 		memset(rx_buffer, 0, RX_BUFFER_SIZE);
 	}
 
 	HAL_UART_Receive_IT(&huart2, &rx_uart, 1);
+}
+
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
+	if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 && htim->Instance == TIM2) {
+		if(is_captured == false) {
+			IC_Val1 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+			is_captured = true;
+		} else {
+			IC_Val2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+
+			if(IC_Val2 > IC_Val1) {
+				difference = IC_Val2 - IC_Val1;
+			}
+			else if (IC_Val2 < IC_Val1) {
+				difference = (0xffffffff - IC_Val1) + IC_Val2;
+			}
+
+			ref_clock = TIMCLOCK/PRESCALER;
+			frequencia = ref_clock/difference;
+			__HAL_TIM_SET_COUNTER(htim, 0);
+			is_captured = false;
+		}
+	}
+}
+
+void Encoder_CheckChange(TIM_HandleTypeDef *htim) {
+	count = encoder_position/2;
+	if (count > last_count) {
+       rpm_selection++;
+    } else if (count < last_count) {
+       rpm_selection--;
+    }
+    last_count = count;
 }
 
 /* USER CODE END 4 */
